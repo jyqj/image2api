@@ -1,0 +1,91 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: gpt2api-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-gpt2api}
+      MYSQL_USER: ${MYSQL_USER:-gpt2api}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-gpt2api}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+      - --innodb-buffer-pool-size=512M
+      - --max-connections=500
+      # 用 mysql_native_password 作为默认认证插件,兼容容器内
+      # mariadb-client 附带的 mariadb-dump(无 caching_sha2_password 插件)。
+      - --default-authentication-plugin=mysql_native_password
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: gpt2api-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.multistage
+    image: gpt2api/server:latest
+    container_name: gpt2api-server
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      # entrypoint.sh 会用这些值等 MySQL 并在空库导入 sql/database.sql
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-gpt2api}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-gpt2api}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-gpt2api}
+      # 通过 GPT2API_* 覆盖 config.yaml 中的任一字段
+      GPT2API_MYSQL_DSN: "${MYSQL_USER:-gpt2api}:${MYSQL_PASSWORD:-gpt2api}@tcp(mysql:3306)/${MYSQL_DATABASE:-gpt2api}?parseTime=true&loc=Local&charset=utf8mb4&collation=utf8mb4_unicode_ci"
+      GPT2API_REDIS_ADDR: "redis:6379"
+      GPT2API_BACKUP_DIR: /app/data/backups
+      GPT2API_BACKUP_RETENTION: ${BACKUP_RETENTION:-30}
+      GPT2API_BACKUP_ALLOW_RESTORE: ${BACKUP_ALLOW_RESTORE:-false}
+      # 强烈建议在 .env 中覆盖 AES 密钥
+      GPT2API_CRYPTO_AES_KEY: ${CRYPTO_AES_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    # 给容器指定独立公共 DNS,避免宿主 Clash/V2Ray 等梯子劫持了
+    # 代理供应商(如 *.arxlabs.io / *.luminati.io 等)的域名解析,
+    # 同时 chatgpt.com 也由外部 DNS 统一解析,确保路径一致。
+    dns:
+      - ${DNS_PRIMARY:-8.8.8.8}
+      - ${DNS_FALLBACK:-1.1.1.1}
+    volumes:
+      - ../configs:/app/configs:ro
+      - backups:/app/data/backups
+      - ./logs:/app/logs
+    command: ["/app/gpt2api", "-c", "/app/configs/config.yaml"]
+
+volumes:
+  mysql_data:
+  redis_data:
+  backups:

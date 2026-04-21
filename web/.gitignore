@@ -1,0 +1,7 @@
+node_modules
+dist
+*.log
+.vite
+src/auto-imports.d.ts
+src/components.d.ts
+.DS_Store

@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1.6
+# 多阶段构建：在容器内编译 Go 后端 + Vue 前端，无需本地预构建
+
+# ---- Stage 1: Go 后端编译 ----
+FROM golang:1.24-alpine AS go-builder
+ENV GOTOOLCHAIN=auto
+ENV GONOSUMCHECK=*
+ENV GONOSUMDB=*
+ENV GOFLAGS=-insecure
+RUN apk add --no-cache git
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd/ cmd/
+COPY internal/ internal/
+COPY pkg/ pkg/
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags "-s -w" -o /out/gpt2api ./cmd/server
+
+# ---- Stage 2: Vue 前端构建 ----
+FROM node:20-alpine AS fe-builder
+WORKDIR /web
+COPY web/package.json web/package-lock.json* ./
+RUN npm install --no-audit --no-fund --loglevel=error
+COPY web/ ./
+RUN npm run build
+
+# ---- Stage 3: 运行时镜像 ----
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates tzdata curl bash mariadb-client \
+    && update-ca-certificates \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone
+
+WORKDIR /app
+
+COPY --from=go-builder /out/gpt2api /app/gpt2api
+RUN chmod +x /app/gpt2api
+
+COPY --from=fe-builder /web/dist /app/web/dist
+
+COPY sql     /app/sql
+COPY configs /app/configs
+COPY deploy/entrypoint.sh /app/entrypoint.sh
+RUN sed -i 's/\r$//' /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh \
+    && mkdir -p /app/data/backups /app/logs
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS http://localhost:8080/healthz || exit 1
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["/app/gpt2api", "-c", "/app/configs/config.yaml"]

@@ -1,0 +1,64 @@
+app:
+  name: gpt2api-local
+  env: dev
+  local_mode: true
+  listen: ":8080"
+  base_url: ""  # 留空则从请求 Host 自动推导;部署时可设为 "https://your-domain.com"
+
+admin:
+  username: "admin"
+  password: "admin123"  # 生产环境请修改!
+
+log:
+  level: info
+  format: console
+  output: stdout
+
+mysql:
+  dsn: "gpt2api:gpt2api@tcp(127.0.0.1:3306)/gpt2api?parseTime=true&loc=Local&charset=utf8mb4&collation=utf8mb4_unicode_ci"
+  max_open_conns: 100
+  max_idle_conns: 20
+  conn_max_lifetime_sec: 3600
+
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+  pool_size: 100
+
+crypto:
+  # 64 位十六进制字符串,用于 AES-256-GCM 加密上游账号令牌/cookies/代理密码。
+  aes_key: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+security:
+  cors_origins:
+    - "http://localhost:5173"
+    - "http://localhost:5174"
+
+scheduler:
+  lock_ttl_sec: 1200
+  cooldown_429_sec: 600
+  warned_pause_hours: 24
+  max_concurrent_per_account: 3  # 单账号最大并发生图数
+
+upstream:
+  base_url: "https://chatgpt.com"
+  request_timeout_sec: 60
+  sse_read_timeout_sec: 300
+
+backup:
+  dir: "./data/backups"
+  retention: 20
+  mysqldump_bin: "mysqldump"
+  mysql_bin: "mysql"
+  max_upload_mb: 512
+  allow_restore: false
+
+smtp:
+  host: ""
+  port: 465
+  username: ""
+  password: ""
+  from: ""
+  from_name: "GPT2API Local"
+  use_tls: true

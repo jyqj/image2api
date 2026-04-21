@@ -1,0 +1,150 @@
+:root {
+  --gp-bg: #f5f7fa;
+  --gp-sidebar-bg: #1f2330;
+  --gp-sidebar-active: #409eff;
+  --gp-card-shadow: 0 1px 4px rgba(0, 21, 41, 0.05);
+}
+
+html.dark {
+  --gp-bg: #0d1117;
+  --gp-sidebar-bg: #0b0e14;
+  --gp-card-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+#app {
+  background: var(--gp-bg);
+}
+
+.page-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--el-text-color-primary);
+}
+
+.page-container {
+  padding: 20px;
+}
+
+.card-block {
+  background: var(--el-bg-color);
+  border-radius: 8px;
+  padding: 18px 20px;
+  box-shadow: var(--gp-card-shadow);
+  + .card-block { margin-top: 16px; }
+}
+
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.flex-wrap-gap {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+// 表格内按钮紧凑
+.el-table .el-button + .el-button { margin-left: 6px; }
+
+/* ------------------------------------------------------------------
+ * 滚动条统一风格
+ *
+ *  - 全局:细细一条(8px),圆角,半透明灰
+ *  - 暗色主题自动加深
+ *  - 左侧深色 sidebar 用专属深色滚动条,避免白白一条贴在暗色面板上很突兀
+ *  - 覆盖范围:浏览器原生滚动(<main>、el-aside、el-table 等)+
+ *            Firefox 的 scrollbar-color / scrollbar-width
+ *
+ *  注意:Element Plus 的 el-select / el-scrollbar 用的是自绘的 bar,不受这里影响。
+ * ------------------------------------------------------------------ */
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(144, 147, 153, 0.45) transparent;
+}
+
+/* WebKit / Blink(Chrome / Edge / Safari / Electron) */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(144, 147, 153, 0.35);
+  border-radius: 999px;
+  border: 2px solid transparent;       /* 做成两侧留白的胶囊 */
+  background-clip: padding-box;
+  transition: background .2s;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(144, 147, 153, 0.65);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 深色主题下再加深对比 */
+html.dark {
+  * { scrollbar-color: rgba(255, 255, 255, 0.22) transparent; }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.32);
+    background-clip: padding-box;
+  }
+}
+
+/* 左侧深色 sidebar:scrollbar 要比 body 更暗更隐形 */
+.el-aside.sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.30);
+    background-clip: padding-box;
+  }
+}
+
+/* Element Plus 自绘滚动条(下拉菜单 / 虚拟滚动)也统一一下粗细和颜色 */
+.el-scrollbar__bar {
+  &.is-vertical > .el-scrollbar__thumb,
+  &.is-horizontal > .el-scrollbar__thumb {
+    background-color: rgba(144, 147, 153, 0.45);
+    border-radius: 999px;
+  }
+  &.is-vertical { width: 6px; }
+  &.is-horizontal { height: 6px; }
+}
+html.dark .el-scrollbar__bar {
+  &.is-vertical > .el-scrollbar__thumb,
+  &.is-horizontal > .el-scrollbar__thumb {
+    background-color: rgba(255, 255, 255, 0.28);
+  }
+}
