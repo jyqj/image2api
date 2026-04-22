@@ -377,10 +377,21 @@ async function onRefreshAll() {
   batchRunning.value = 'refresh'
   try {
     const r = await accountApi.refreshAllAccounts()
-    ElNotification.success({
+    const failDetails = (r.results || [])
+      .filter((x: any) => !x.ok)
+      .map((x: any) => `${x.email}: ${x.error || '未知错误'}`)
+    const hasFailures = r.failed > 0
+    ElNotification({
+      type: hasFailures ? (r.success > 0 ? 'warning' : 'error') : 'success',
       title: '批量刷新完成',
-      message: `成功 ${r.success} · 失败 ${r.failed} · 合计 ${r.total}`,
-      duration: 4000,
+      message: hasFailures
+        ? `成功 ${r.success} · 失败 ${r.failed} · 合计 ${r.total}\n${failDetails.join('\n')}`
+        : `全部成功 · 合计 ${r.total}`,
+      duration: hasFailures ? 0 : 4000,
+      dangerouslyUseHTMLString: true,
+      ...(hasFailures && failDetails.length > 0 ? {
+        message: `成功 ${r.success} · 失败 ${r.failed} · 合计 ${r.total}<br/>${failDetails.map(s => `<div style="color:#F56C6C;font-size:12px;margin-top:2px">${s}</div>`).join('')}`,
+      } : {}),
     })
     fetchList()
   } catch (e: any) {

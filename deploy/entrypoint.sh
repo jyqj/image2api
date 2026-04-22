@@ -62,8 +62,40 @@ run_db_init() {
   log "database initialization done."
 }
 
+run_db_migrate() {
+  # 增量迁移:检查并添加 image_tasks 表的新字段(幂等)
+  run_sql() {
+    MYSQL_PWD="${MYSQL_PASSWORD}" mysql \
+      -h "${MYSQL_HOST}" -P "${MYSQL_PORT}" -u "${MYSQL_USER}" "${MYSQL_DATABASE}" \
+      -N -B -e "$1" 2>/dev/null
+  }
+
+  col_exists() {
+    local cnt
+    cnt=$(run_sql "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='${MYSQL_DATABASE}' AND table_name='$1' AND column_name='$2'" || echo "0")
+    [[ "${cnt}" != "0" ]]
+  }
+
+  add_col() {
+    local tbl=$1 col=$2 ddl=$3
+    if ! col_exists "${tbl}" "${col}"; then
+      log "adding column ${tbl}.${col}"
+      run_sql "ALTER TABLE ${tbl} ADD COLUMN ${ddl}" || log "  WARN: ALTER failed for ${col}"
+    fi
+  }
+
+  add_col image_tasks revised_prompt  "revised_prompt TEXT NULL AFTER prompt"
+  add_col image_tasks quality         "quality VARCHAR(32) NOT NULL DEFAULT '' AFTER size"
+  add_col image_tasks style           "style VARCHAR(32) NOT NULL DEFAULT '' AFTER quality"
+  add_col image_tasks reference_urls  "reference_urls JSON NULL AFTER result_urls"
+  add_col image_tasks attempts        "attempts INT NOT NULL DEFAULT 0 AFTER error"
+  add_col image_tasks duration_ms     "duration_ms BIGINT NOT NULL DEFAULT 0 AFTER attempts"
+  add_col image_tasks user_id         "user_id VARCHAR(128) NOT NULL DEFAULT '' AFTER duration_ms"
+}
+
 wait_mysql || true
 run_db_init || { log "database initialization failed"; exit 1; }
+run_db_migrate || { log "database migration failed (non-fatal)"; }
 
 log "starting: $*"
 exec "$@"

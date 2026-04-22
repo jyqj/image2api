@@ -41,13 +41,21 @@ type Task struct {
 	ModelID        uint64     `db:"model_id"`
 	AccountID      uint64     `db:"account_id"`
 	Prompt         string     `db:"prompt"`
+	RevisedPrompt  string     `db:"revised_prompt"`
 	N              int        `db:"n"`
 	Size           string     `db:"size"`
+	Quality        string     `db:"quality"`
+	Style          string     `db:"style"`
 	Status         string     `db:"status"`
 	ConversationID string     `db:"conversation_id"`
 	FileIDs        []byte     `db:"file_ids"`
 	ResultURLs     []byte     `db:"result_urls"`
+	ReferenceURLs  []byte     `db:"reference_urls"`
+	LocalPaths     []byte     `db:"local_paths"`
 	Error          string     `db:"error"`
+	Attempts       int        `db:"attempts"`
+	DurationMs     int64      `db:"duration_ms"`
+	UserID         string     `db:"user_id"`
 	CreatedAt      time.Time  `db:"created_at"`
 	StartedAt      *time.Time `db:"started_at"`
 	FinishedAt     *time.Time `db:"finished_at"`

@@ -1,6 +1,7 @@
 package image
 
 import (
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -22,13 +23,20 @@ type taskView struct {
 	ModelID        uint64     `json:"model_id"`
 	AccountID      uint64     `json:"account_id"`
 	Prompt         string     `json:"prompt"`
+	RevisedPrompt  string     `json:"revised_prompt,omitempty"`
 	N              int        `json:"n"`
 	Size           string     `json:"size"`
+	Quality        string     `json:"quality,omitempty"`
+	Style          string     `json:"style,omitempty"`
 	Status         string     `json:"status"`
 	ConversationID string     `json:"conversation_id,omitempty"`
 	Error          string     `json:"error,omitempty"`
 	ImageURLs      []string   `json:"image_urls"`
 	FileIDs        []string   `json:"file_ids,omitempty"`
+	ReferenceURLs  []string   `json:"reference_urls,omitempty"`
+	Attempts       int        `json:"attempts,omitempty"`
+	DurationMs     int64      `json:"duration_ms,omitempty"`
+	UserID         string     `json:"user_id,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	StartedAt      *time.Time `json:"started_at,omitempty"`
 	FinishedAt     *time.Time `json:"finished_at,omitempty"`
@@ -40,12 +48,18 @@ func toView(t *Task) taskView {
 	for i, id := range fids {
 		fids[i] = strings.TrimPrefix(id, "sed:")
 	}
+	var refURLs []string
+	if len(t.ReferenceURLs) > 0 {
+		_ = json.Unmarshal(t.ReferenceURLs, &refURLs)
+	}
 	return taskView{
 		ID: t.ID, TaskID: t.TaskID, ModelID: t.ModelID,
-		AccountID: t.AccountID, Prompt: t.Prompt, N: t.N, Size: t.Size,
+		AccountID: t.AccountID, Prompt: t.Prompt, RevisedPrompt: t.RevisedPrompt,
+		N: t.N, Size: t.Size, Quality: t.Quality, Style: t.Style,
 		Status: t.Status, ConversationID: t.ConversationID, Error: t.Error,
-		ImageURLs: urls, FileIDs: fids, CreatedAt: t.CreatedAt,
-		StartedAt: t.StartedAt, FinishedAt: t.FinishedAt,
+		ImageURLs: urls, FileIDs: fids, ReferenceURLs: refURLs,
+		Attempts: t.Attempts, DurationMs: t.DurationMs, UserID: t.UserID,
+		CreatedAt: t.CreatedAt, StartedAt: t.StartedAt, FinishedAt: t.FinishedAt,
 	}
 }
 

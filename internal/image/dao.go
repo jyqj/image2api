@@ -19,11 +19,13 @@ func NewDAO(db *sqlx.DB) *DAO { return &DAO{db: db} }
 func (d *DAO) Create(ctx context.Context, t *Task) error {
 	res, err := d.db.ExecContext(ctx, `
 INSERT INTO image_tasks
-  (task_id, model_id, account_id, prompt, n, size, status,
-   conversation_id, file_ids, result_urls, error, created_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?, NOW())`,
-		t.TaskID, t.ModelID, t.AccountID, t.Prompt, t.N, t.Size, nullEmpty(t.Status, StatusQueued),
-		t.ConversationID, nullJSON(t.FileIDs), nullJSON(t.ResultURLs), t.Error,
+  (task_id, model_id, account_id, prompt, revised_prompt, n, size, quality, style, status,
+   conversation_id, file_ids, result_urls, reference_urls, error, user_id, created_at)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, NOW())`,
+		t.TaskID, t.ModelID, t.AccountID, t.Prompt, t.RevisedPrompt,
+		t.N, t.Size, t.Quality, t.Style, nullEmpty(t.Status, StatusQueued),
+		t.ConversationID, nullJSON(t.FileIDs), nullJSON(t.ResultURLs), nullJSON(t.ReferenceURLs),
+		t.Error, t.UserID,
 	)
 	if err != nil {
 		return fmt.Errorf("image dao create: %w", err)
@@ -46,14 +48,29 @@ func (d *DAO) SetAccount(ctx context.Context, taskID string, accountID uint64) e
 	return err
 }
 
-func (d *DAO) MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs []string) error {
+func (d *DAO) MarkSuccess(ctx context.Context, taskID, convID string, fileIDs, resultURLs []string, extra SuccessExtra) error {
 	fidB, _ := json.Marshal(fileIDs)
 	urlB, _ := json.Marshal(resultURLs)
+	var refB []byte
+	if len(extra.ReferenceFileIDs) > 0 {
+		refB, _ = json.Marshal(extra.ReferenceFileIDs)
+	}
 	_, err := d.db.ExecContext(ctx, `
 UPDATE image_tasks
-   SET status='success', conversation_id=?, file_ids=?, result_urls=?, finished_at=NOW()
- WHERE task_id=?`, convID, fidB, urlB, taskID)
+   SET status='success', conversation_id=?, file_ids=?, result_urls=?,
+       reference_urls=COALESCE(?, reference_urls), revised_prompt=?,
+       attempts=?, duration_ms=?, finished_at=NOW()
+ WHERE task_id=?`, convID, fidB, urlB, nullJSON(refB), extra.RevisedPrompt,
+		extra.Attempts, extra.DurationMs, taskID)
 	return err
+}
+
+// SuccessExtra 携带落库时的额外统计信息。
+type SuccessExtra struct {
+	RevisedPrompt    string
+	ReferenceFileIDs []string // GPT 侧的 file-service ID
+	Attempts         int
+	DurationMs       int64
 }
 
 func (d *DAO) MarkFailed(ctx context.Context, taskID, errorCode string) error {
@@ -67,9 +84,9 @@ UPDATE image_tasks
 func (d *DAO) Get(ctx context.Context, taskID string) (*Task, error) {
 	var t Task
 	err := d.db.GetContext(ctx, &t, `
-SELECT id, task_id, model_id, account_id, prompt, n, size, status,
-       conversation_id, file_ids, result_urls, error,
-       created_at, started_at, finished_at
+SELECT id, task_id, model_id, account_id, prompt, revised_prompt, n, size, quality, style, status,
+       conversation_id, file_ids, result_urls, reference_urls, error,
+       attempts, duration_ms, user_id, created_at, started_at, finished_at
   FROM image_tasks
  WHERE task_id = ?`, taskID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -87,9 +104,9 @@ func (d *DAO) ListAll(ctx context.Context, limit, offset int) ([]Task, error) {
 	}
 	var out []Task
 	err := d.db.SelectContext(ctx, &out, `
-SELECT id, task_id, model_id, account_id, prompt, n, size, status,
-       conversation_id, file_ids, result_urls, error,
-       created_at, started_at, finished_at
+SELECT id, task_id, model_id, account_id, prompt, revised_prompt, n, size, quality, style, status,
+       conversation_id, file_ids, result_urls, reference_urls, error,
+       attempts, duration_ms, user_id, created_at, started_at, finished_at
   FROM image_tasks
  ORDER BY id DESC
  LIMIT ? OFFSET ?`, limit, offset)

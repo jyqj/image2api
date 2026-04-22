@@ -54,18 +54,20 @@ type RunOptions struct {
 
 // RunResult 是单次生图的输出。
 type RunResult struct {
-	Status         string // success / failed
-	ConversationID string
-	AccountID      uint64
-	FileIDs        []string // chatgpt.com 侧的原始 ref("sed:" 前缀表示 sediment)
-	SignedURLs     []string // 直接可访问的签名 URL(15 分钟有效)
-	ContentTypes   []string
-	ErrorCode      string
-	ErrorMessage   string
-	Attempts       int  // 跨账号尝试次数(runOnce 次数)
-	TurnsInConv    int  // 当前账号内同会话 picture_v2 轮次
-	IsPreview      bool // true=返回的是 IMG1 sediment 预览(3 轮均未命中 IMG2 灰度,已尽力)
-	DurationMs     int64
+	Status          string // success / failed
+	ConversationID  string
+	AccountID       uint64
+	FileIDs         []string // chatgpt.com 侧的原始 ref("sed:" 前缀表示 sediment)
+	SignedURLs      []string // 直接可访问的签名 URL(15 分钟有效)
+	ContentTypes    []string
+	RevisedPrompt   string   // 上游改写后的 prompt(从 SSE assistant 文本中提取)
+	ReferenceFileIDs []string // 上传到 GPT 的参考图 file-service ID
+	ErrorCode       string
+	ErrorMessage    string
+	Attempts        int  // 跨账号尝试次数(runOnce 次数)
+	TurnsInConv     int  // 当前账号内同会话 picture_v2 轮次
+	IsPreview       bool // true=返回的是 IMG1 sediment 预览(3 轮均未命中 IMG2 灰度,已尽力)
+	DurationMs      int64
 }
 
 // Run 执行生图。会同步阻塞直到完成/失败;调用方自行做超时控制(传 ctx)。
@@ -197,7 +199,12 @@ func (r *Runner) Run(ctx context.Context, opt RunOptions) *RunResult {
 	if r.dao != nil && opt.TaskID != "" {
 		if result.Status == StatusSuccess {
 			_ = r.dao.MarkSuccess(ctx, opt.TaskID, result.ConversationID,
-				result.FileIDs, result.SignedURLs)
+				result.FileIDs, result.SignedURLs, SuccessExtra{
+					RevisedPrompt:    result.RevisedPrompt,
+					ReferenceFileIDs: result.ReferenceFileIDs,
+					Attempts:         result.Attempts,
+					DurationMs:       result.DurationMs,
+				})
 		} else {
 			_ = r.dao.MarkFailed(ctx, opt.TaskID, result.ErrorCode)
 		}
@@ -310,8 +317,17 @@ func (r *Runner) runOnce(ctx context.Context, opt RunOptions, result *RunResult,
 			}
 			refs = append(refs, up)
 		}
+		// 记录上传到 GPT 的参考图 file ID,用于训练数据留存
+		refFileIDs := make([]string, 0, len(refs))
+		for _, u := range refs {
+			if u != nil && u.FileID != "" {
+				refFileIDs = append(refFileIDs, u.FileID)
+			}
+		}
+		result.ReferenceFileIDs = refFileIDs
 		logger.L().Info("image runner references uploaded",
-			zap.String("task_id", opt.TaskID), zap.Int("count", len(refs)))
+			zap.String("task_id", opt.TaskID), zap.Int("count", len(refs)),
+			zap.Strings("ref_file_ids", refFileIDs))
 	}
 
 	// 注意:新会话不要本地生成 conversation_id,上游会 404。
@@ -416,6 +432,10 @@ loop:
 		if sseResult.ConversationID != "" {
 			convID = sseResult.ConversationID
 			result.ConversationID = convID
+		}
+		// 保留上游助手文本作为 revised_prompt(通常包含对 prompt 的改写/解释)
+		if sseResult.AssistantText != "" && result.RevisedPrompt == "" {
+			result.RevisedPrompt = sseResult.AssistantText
 		}
 
 		// 每轮 SSE 解析完的原始产物:FileIDs(file-service://,IMG2 直出时有)、
